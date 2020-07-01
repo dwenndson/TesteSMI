@@ -1,0 +1,1 @@
+"subindo estudo de smi" 
