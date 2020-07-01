@@ -1,0 +1,339 @@
+[1mdiff --git a/IogServices/BackgroundTasks/IogServicesMqttCommandsReceiverHostedService.cs b/IogServices/BackgroundTasks/IogServicesMqttCommandsReceiverHostedService.cs[m
+[1mnew file mode 100644[m
+[1mindex 0000000..ef7730a[m
+[1m--- /dev/null[m
+[1m+++ b/IogServices/BackgroundTasks/IogServicesMqttCommandsReceiverHostedService.cs[m
+[36m@@ -0,0 +1,153 @@[m
+[32m+[m[32musing System;[m
+[32m+[m[32musing System.Collections.Generic;[m
+[32m+[m[32musing System.Linq;[m
+[32m+[m[32musing System.Threading;[m
+[32m+[m[32musing System.Threading.Tasks;[m
+[32m+[m[32musing IogServices.Constants;[m
+[32m+[m[32musing IogServices.Constants.ForwarderMqtt;[m
+[32m+[m[32musing IogServices.Enums;[m
+[32m+[m[32musing IogServices.Models.DTO;[m
+[32m+[m[32musing IogServices.Services;[m
+[32m+[m[32musing IogServices.Util;[m
+[32m+[m[32musing Microsoft.Extensions.DependencyInjection;[m
+[32m+[m[32musing Microsoft.Extensions.Hosting;[m
+[32m+[m[32musing Microsoft.Extensions.Options;[m
+[32m+[m[32musing MqttClientLibrary;[m
+[32m+[m[32musing MqttClientLibrary.Models;[m
+[32m+[m
+[32m+[m[32mnamespace IogServices.BackgroundTasks[m
+[32m+[m[32m{[m
+[32m+[m[32m    public class IogServicesMqttCommandsReceiverHostedService : IHostedService[m
+[32m+[m[32m    {[m
+[32m+[m[32m        private readonly Mqtt _mqttConfiguration;[m
+[32m+[m[32m        private IIoGMqttClient _commandsMqttClient;[m
+[32m+[m[32m        private readonly IServiceProvider _serviceProvider;[m
+[32m+[m[32m        private readonly IMqttClientConfiguration _mqttClientConfiguration;[m
+[32m+[m[32m        private readonly IMqttClientMethods _mqttClientMethods;[m
+[32m+[m[32m        private List<CommandDeviceTopic> CommandDeviceTopics = new List<CommandDeviceTopic>();[m
+[32m+[m
+[32m+[m[32m        public IogServicesMqttCommandsReceiverHostedService(IOptionsMonitor<Forwarder> mqttConfiguration,[m
+[32m+[m[32m            IServiceProvider serviceProvider, IMqttClientMethods mqttClientMethods,[m
+[32m+[m[32m            IMqttClientConfiguration mqttClientConfiguration)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            _mqttConfiguration = mqttConfiguration.CurrentValue.Mqtt;[m
+[32m+[m[32m            _serviceProvider = serviceProvider;[m
+[32m+[m[32m            _mqttClientConfiguration = mqttClientConfiguration;[m
+[32m+[m[32m            _mqttClientMethods = mqttClientMethods;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        public Task StartAsync(CancellationToken cancellationToken)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            _commandsMqttClient = new IoGMqttClient(_mqttConfiguration.CommandsBaseClientSettings,[m
+[32m+[m[32m                _mqttConfiguration.BrokerSettings, _mqttClientConfiguration, _mqttClientMethods);[m
+[32m+[m
+[32m+[m[32m            IEnumerable<string> meterList;[m
+[32m+[m[32m            IEnumerable<string> smcList;[m
+[32m+[m[41m            [m
+[32m+[m[32m            using (var scope = _serviceProvider.CreateScope())[m
+[32m+[m[32m            {[m
+[32m+[m[32m                var meterService = scope.ServiceProvider.GetRequiredService<IMeterService>();[m
+[32m+[m[32m                var smcService = scope.ServiceProvider.GetRequiredService<ISmcService>();[m
+[32m+[m[32m                meterList = meterService.GetAll().Select(meter => meter.Serial);[m
+[32m+[m[32m                smcList = smcService.GetAll().Select(smc => smc.Serial);[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            foreach (var meter in meterList)[m
+[32m+[m[32m            {[m
+[32m+[m[32m                var topicAddress = AddDeviceToTopicList(meter, CommandDeviceType.Meter);[m
+[32m+[m[32m                var topic = MakeTopicObject(topicAddress);[m
+[32m+[m[32m                _commandsMqttClient.Subscribe(topic);[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            foreach (var smc in smcList)[m
+[32m+[m[32m            {[m
+[32m+[m[32m                var topicAddress = AddDeviceToTopicList(smc, CommandDeviceType.Smc);[m
+[32m+[m[32m                var topic = MakeTopicObject(topicAddress);[m
+[32m+[m[32m                _commandsMqttClient.Subscribe(topic);[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            _commandsMqttClient.MessageReceivedHandler += CommandReceived;[m
+[32m+[m[41m            [m
+[32m+[m[32m            return Task.CompletedTask;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        public Task StopAsync(CancellationToken cancellationToken)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            throw new System.NotImplementedException();[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        private string AddDeviceToTopicList(string serial, CommandDeviceType commandDeviceType)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            var topic = _mqttConfiguration.BaseCommandsSubscribeTopic.Address[m
+[32m+[m[32m                .Replace("{smc-or-meter}", commandDeviceType.ToString().ToLower())[m
+[32m+[m[32m                .Replace("{serial}", serial);[m
+[32m+[m[41m            [m
+[32m+[m[32m            var deviceTopic = new CommandDeviceTopic()[m
+[32m+[m[32m            {[m
+[32m+[m[32m                DeviceSerial = serial,[m
+[32m+[m[32m                DeviceTopic = topic[m
+[32m+[m[32m            };[m
+[32m+[m[41m            [m
+[32m+[m[32m            CommandDeviceTopics.Add(deviceTopic);[m
+[32m+[m
+[32m+[m[32m            return topic;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        private Topic MakeTopicObject(string address)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            return new Topic(){Address = address, QoS = _mqttConfiguration.BaseCommandsSubscribeTopic.QoS};[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        public void AddMeter(MeterDto meterDto)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            var topicAddress = AddDeviceToTopicList(meterDto.Serial, CommandDeviceType.Meter);[m
+[32m+[m[32m            var topic = MakeTopicObject(topicAddress);[m
+[32m+[m[32m            _commandsMqttClient.Subscribe(topic);[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        public void RemoveMeter(MeterDto meterDto)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            var deviceTopic = CommandDeviceTopics.Find(x => x.DeviceSerial == meterDto.Serial);[m
+[32m+[m[32m            if (deviceTopic == null) return;[m
+[32m+[m[32m            CommandDeviceTopics.Remove(deviceTopic);[m
+[32m+[m[32m            _commandsMqttClient.Unsubscribe(deviceTopic.DeviceTopic);[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        private void CommandReceived(object sender, MessageReceivedArgs messageReceivedArgs)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            Task.Run(() => ProcessCommandReceived(messageReceivedArgs.MessageReceived));[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        private Task ProcessCommandReceived(Message message)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            var topic = message.Topic;[m
+[32m+[m[32m            var deviceIdentifier = GetDeviceIdentifierFromTopic(topic);[m
+[32m+[m[32m            var commandDeviceTopic = CommandDeviceTopics.Find(x => x.DeviceSerial == deviceIdentifier);[m
+[32m+[m
+[32m+[m[32m            commandDeviceTopic.Semaphore.Wait();[m
+[32m+[m
+[32m+[m[32m            using (var scope = _serviceProvider.CreateScope())[m
+[32m+[m[32m            {[m
+[32m+[m[32m                var threadService = scope.ServiceProvider.GetRequiredService<IThreadService>();[m
+[32m+[m[32m                var thread = threadService.GetCommandThread(deviceIdentifier);[m
+[32m+[m[32m                if (thread == null)[m
+[32m+[m[32m                {[m
+[32m+[m[41m                    [m
+[32m+[m[32m                }[m
+[32m+[m[32m            }[m
+[32m+[m[41m                [m
+[32m+[m[32m            _commandsMqttClient.Unsubscribe(topic);[m
+[32m+[m
+[32m+[m[32m            commandDeviceTopic.Semaphore.Release();[m
+[32m+[m[41m            [m
+[32m+[m[32m            return Task.CompletedTask;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        private string GetDeviceIdentifierFromTopic(string topic)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            var subTopics = topic.Split("/");[m
+[32m+[m
+[32m+[m[32m            return subTopics[4];[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/IogServices/Controllers/MeterAlarmController.cs b/IogServices/Controllers/MeterAlarmController.cs[m
+[1mnew file mode 100644[m
+[1mindex 0000000..2682305[m
+[1m--- /dev/null[m
+[1m+++ b/IogServices/Controllers/MeterAlarmController.cs[m
+[36m@@ -0,0 +1,31 @@[m
+[32m+[m[32m﻿using System.Net.Mime;[m
+[32m+[m[32musing IogServices.Services;[m
+[32m+[m[32musing Microsoft.AspNetCore.Cors;[m
+[32m+[m[32musing Microsoft.AspNetCore.Http;[m
+[32m+[m[32musing Microsoft.AspNetCore.Mvc;[m
+[32m+[m
+[32m+[m[32mnamespace IogServices.Controllers[m
+[32m+[m[32m{[m
+[32m+[m[32m    [Route("meter-alarms")][m
+[32m+[m[32m    [Produces("application/json")][m
+[32m+[m[32m    [EnableCors("CorsPolicy")][m
+[32m+[m[32m    [ApiController][m
+[32m+[m
+[32m+[m[32m    public class MeterAlarmController : ControllerBase[m
+[32m+[m[32m    {[m
+[32m+[m[32m        private readonly IMeterAlarmService _meterAlarmService;[m
+[32m+[m[32m        public MeterAlarmController(IMeterAlarmService meterAlarmService)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            _meterAlarmService = meterAlarmService;[m
+[32m+[m[32m        }[m
+[32m+[m[41m        [m
+[32m+[m[32m        [HttpGet("{serial}")][m
+[32m+[m[32m        [Consumes(MediaTypeNames.Application.Json)][m
+[32m+[m[32m        [ProducesResponseType(StatusCodes.Status200OK)][m
+[32m+[m[32m        public IActionResult GetBySerial([FromRoute] string serial)[m
+[32m+[m[32m        {[m
+[32m+[m[32m            return new OkObjectResult(_meterAlarmService.GetBySerial(serial));[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/IogServices/Controllers/MeterEnergyController.cs b/IogServices/Controllers/MeterEnergyController.cs[m
+[1mindex e85e0a8..571ec2c 100644[m
+[1m--- a/IogServices/Controllers/MeterEnergyController.cs[m
+[1m+++ b/IogServices/Controllers/MeterEnergyController.cs[m
+[36m@@ -17,12 +17,10 @@[m [mnamespace IogServices.Controllers[m
+     public class MeterEnergyController : ControllerBase[m
+     {[m
+         private readonly IMeterEnergyService _meterEnergyService;[m
+[31m-        private readonly IServicesUtils _servicesUtils;[m
+ [m
+[31m-        public MeterEnergyController(IMeterEnergyService meterEnergyService, IServicesUtils servicesUtils)[m
+[32m+[m[32m        public MeterEnergyController(IMeterEnergyService meterEnergyService)[m
+         {[m
+             _meterEnergyService = meterEnergyService;[m
+[31m-            _servicesUtils = servicesUtils;[m
+         }[m
+ [m
+         [HttpGet("{serial}")][m
+[36m@@ -32,39 +30,7 @@[m [mnamespace IogServices.Controllers[m
+         {[m
+             return new OkObjectResult(_meterEnergyService.GetAllBySerial(serial));[m
+         }[m
+[31m-[m
+[31m-        [HttpGet("{id}", Name = "GetByIdMeterEnergyRoute")][m
+[31m-        [Consumes(MediaTypeNames.Application.Json)][m
+[31m-        [ProducesResponseType(StatusCodes.Status200OK)][m
+[31m-        [ProducesResponseType(StatusCodes.Status404NotFound)][m
+[31m-        public IActionResult GetById([FromRoute] Guid id)[m
+[31m-        {[m
+[31m-            MeterEnergyDto meterEnergyDto = _meterEnergyService.GetById(id);[m
+[31m-            if (meterEnergyDto != null)[m
+[31m-            {[m
+[31m-                return new OkObjectResult(meterEnergyDto);[m
+[31m-            }[m
+[31m-            else[m
+[31m-            {[m
+[31m-                return new NotFoundResult();[m
+[31m-            }[m
+[31m-        }[m
+[31m-[m
+[31m-        [HttpPost][m
+[31m-        [Consumes(MediaTypeNames.Application.Json)][m
+[31m-        [ProducesResponseType(StatusCodes.Status201Created)][m
+[31m-        [ProducesResponseType(StatusCodes.Status400BadRequest)][m
+[31m-        public IActionResult Save(MeterEnergyDto meterEnergyDto)[m
+[31m-        {[m
+[31m-            MeterEnergyDto savedMeterEnergyDto = _meterEnergyService.Save(meterEnergyDto);[m
+[31m-            return new CreatedResult([m
+[31m-                _servicesUtils[m
+[31m-                    .CreateUri([m
+[31m-                        Request,[m
+[31m-                        Url.RouteUrl([m
+[31m-                            "GetByIdMeterEnergyRoute",[m
+[31m-                            new {id = savedMeterEnergyDto.Id})),[m
+[31m-                savedMeterEnergyDto);[m
+[31m-        }[m
+[32m+[m[41m        [m
+[32m+[m[41m        [m
+     }[m
+ }[m
+\ No newline at end of file[m
+[1mdiff --git a/IogServices/Enums/AlarmMeterTypes.cs b/IogServices/Enums/AlarmMeterTypes.cs[m
+[1mnew file mode 100644[m
+[1mindex 0000000..2903f7e[m
+[1m--- /dev/null[m
+[1m+++ b/IogServices/Enums/AlarmMeterTypes.cs[m
+[36m@@ -0,0 +1,22 @@[m
+[32m+[m[32m﻿﻿﻿using System.ComponentModel;[m
+[32m+[m
+[32m+[m[32m namespace EletraSmcModels[m
+[32m+[m[32m{[m
+[32m+[m[32m    public enum AlarmMeterTypes[m
+[32m+[m[32m    {[m
+[32m+[m[32m        [Description("Medidor Programa")][m
+[32m+[m[32m        MEDIDOR_PROGRAMA = 0,[m
+[32m+[m[32m        [Description("Medidor Energia")][m
+[32m+[m[32m        MEDIDOR_ENERGIA = 1,[m
+[32m+[m[32m        [Description("Falha de Parâmetros do Medidor")][m
+[32m+[m[32m        MEDIDOR_FALHA_PARAMETROS = 2,[m
+[32m+[m[32m        [Description("Corrente Reversa")][m
+[32m+[m[32m        MEDIDOR_CORRENTE_REVERSA = 3,[m
+[32m+[m[32m        [Description("Timeout")][m
+[32m+[m[32m        MEDIDOR_TIMEOUT = 4,[m
+[32m+[m[32m        [Description("Corte no Medidor")][m
+[32m+[m[32m        MEDIDOR_CORTE = 5,[m
+[32m+[m[32m        [Description("Religamento no Medidor")][m
+[32m+[m[32m        MEDIDOR_RELIG = 6[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[1mdiff --git a/IogServices/Enums/CommandDeviceType.cs b/IogServices/Enums/CommandDeviceType.cs[m
+[1mnew file mode 100644[m
+[1mindex 0000000..ad1759d[m
+[1m--- /dev/null[m
+[1m+++ b/IogServices/Enums/CommandDeviceType.cs[m
+[36m@@ -0,0 +1,8 @@[m
+[32m+[m[32mnamespace IogServices.Enums[m
+[32m+[m[32m{[m
+[32m+[m[32m    public enum CommandDeviceType[m
+[32m+[m[32m    {[m
+[32m+[m[32m        Meter,[m
+[32m+[m[32m        Smc[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/IogServices/Enums/Status.cs b/IogServices/Enums/Status.cs[m
+[1mindex 33fce43..72d7ef9 100644[m
+[1m--- a/IogServices/Enums/Status.cs[m
+[1m+++ b/IogServices/Enums/Status.cs[m
+[36m@@ -2,8 +2,8 @@[m
+ {[m
+     public enum Status[m
+     {[m
+[31m-        WaitingExecution = 0,[m
+[31m-        Execution = 1,[m
+[32m+[m[32m        Waiting = 0,[m
+[32m+[m[32m        Executing = 1,[m
+         Finished = 2,[m
+         Failed = 3[m
+             [m
+[1mdiff --git a/IogServices/HubConfig/Hubs/MeterAlarmsHub.cs b/IogServices/HubConfig/Hubs/MeterAlarmsHub.cs[m
+[1mindex 25caad8..1f8398b 100644[m
+[1m--- a/IogServices/HubConfig/Hubs/MeterAlarmsHub.cs[m
+[1m+++ b/IogServices/HubConfig/Hubs/MeterAlarmsHub.cs[m
+[36m@@ -1,18 +1,15 @@[m
+[31m-﻿using System;[m
+[31m-using System.Collections.Generic;[m
+[31m-using System.Linq;[m
+[31m-using System.Threading.Tasks;[m
+[32m+[m[32m﻿using System.Threading.Tasks;[m
+ using IogServices.Enums;[m
+[31m-using IogServices.Models;[m
+[32m+[m[32musing IogServices.Models.DTO;[m
+ using Microsoft.AspNetCore.SignalR;[m
+ [m
+ namespace IogServices.HubConfig.Hubs[m
+ {[m
+[31m-    public class MeterAlarmsHub : Hub[m
+[32m+[m[32m    public class MeterAlarmHub : Hub[m
+     {[m
+[31m-        public async Task UpdateForAll(MeterAlarm meterAlarm, ClientType clientType)[m
+[32m+[m[32m        public async Task UpdateForAll(MeterAlarmDto meterAlarm

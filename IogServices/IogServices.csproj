@@ -1,0 +1,44 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>netcoreapp2.2</TargetFramework>
+        <AspNetCoreHostingModel>InProcess</AspNetCoreHostingModel>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="AutoMapper" Version="9.0.0" />
+        <PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" Version="7.0.0" />
+        <PackageReference Include="ConcurrentDataStructures" Version="0.2.0" />
+        <PackageReference Include="DocumentFormat.OpenXml" Version="2.10.0" />
+        <PackageReference Include="Hellang.Middleware.ProblemDetails" Version="4.0.0" />
+        <PackageReference Include="Microsoft.AspNetCore.App" />
+        <PackageReference Include="Microsoft.AspNetCore.Razor.Design" Version="2.2.0" PrivateAssets="All" />
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Core" Version="1.1.0" />
+        <PackageReference Include="MQTTnet" Version="3.0.8" />
+        <PackageReference Include="MQTTnet.Extensions.ManagedClient" Version="3.0.8" />
+        <PackageReference Include="Newtonsoft.Json" Version="12.0.1" />
+        <PackageReference Include="Swashbuckle.AspNetCore" Version="5.0.0-rc5" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Remove="Controllers\ValuesController.cs" />
+      <Compile Remove="Models\ErrorDetails.cs" />
+      <Compile Remove="ExceptionHandlers\Exceptions\SqlError.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="EletraSmcModels, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+        <HintPath>Libraries\EletraSmcModels.dll</HintPath>
+      </Reference>
+      <Reference Include="EletraSmiModels, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+        <HintPath>Libraries\EletraSmiModels.dll</HintPath>
+      </Reference>
+      <Reference Include="MqttClientLibrary, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+        <HintPath>Libraries\MqttClientLibrary.dll</HintPath>
+      </Reference>
+      <Reference Include="NetworkObjects, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+        <HintPath>Libraries\NetworkObjects.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+</Project>
